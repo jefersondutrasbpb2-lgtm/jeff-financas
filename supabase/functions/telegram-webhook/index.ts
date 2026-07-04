@@ -371,14 +371,21 @@ Deno.serve(async (req) => {
     }
 
     // Registro de lançamento (texto ou áudio)
-    const [{ data: categories }, { data: cards }] = await Promise.all([
-      supabase.from('categories').select('id, type, label, group_label').eq('user_id', userId),
-      supabase.from('credit_cards').select('id, name, last_digits').eq('user_id', userId),
-    ]);
+    const { data: categories } = await supabase
+      .from('categories').select('id, type, label, group_label').eq('user_id', userId);
 
     if (!categories || categories.length === 0) {
       await sendMessage(chatId, 'Você ainda não tem categorias cadastradas no app.');
       return new Response('ok');
+    }
+
+    let cards: CreditCard[] = [];
+    try {
+      const { data: cardsData } = await supabase
+        .from('credit_cards').select('id, name, last_digits').eq('user_id', userId);
+      cards = cardsData ?? [];
+    } catch {
+      // tabela pode não existir ainda
     }
 
     let audio: { bytes: Uint8Array; mimeType: string } | null = null;
