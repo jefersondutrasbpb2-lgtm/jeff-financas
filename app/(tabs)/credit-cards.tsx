@@ -4,13 +4,14 @@ import {
   TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Icon } from '../../components/icons/Icon';
 import { colors, shadows } from '../../constants/theme';
 import {
   CARD_COLORS, DbCreditCard, formatCardLabel,
   getBillingCycle, useCreditCardMutations, useCreditCards, type NewCreditCard,
 } from '../../lib/creditCards';
-import { useCategories, useTransactionMutations, useTransactions } from '../../lib/queries';
+import { useCategories, useTransactionMutations, useTransactions, type DbTransaction } from '../../lib/queries';
 import { formatBRL } from '../../lib/formatters';
 import { DESKTOP_BREAKPOINT, SIDEBAR_WIDTH } from '../../components/layout/ResponsiveTabBar';
 import { confirmDialog } from '../../lib/confirm';
@@ -153,11 +154,12 @@ function CardFormModal({
 export default function CreditCardsScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
+  const router = useRouter();
 
   const { data: cards = [] } = useCreditCards();
   const { data: transactions = [] } = useTransactions();
   const { data: categories = [] } = useCategories();
-  const { updateTransaction, deleteTransaction, deleteInstallmentGroup } = useTransactionMutations();
+  const { deleteTransaction, deleteInstallmentGroup } = useTransactionMutations();
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [modalCard, setModalCard] = useState<DbCreditCard | null | 'new'>('new' as any);
@@ -201,16 +203,21 @@ export default function CreditCardsScreen() {
     return { label: cat?.label ?? '—', icon: cat?.icon ?? 'tag', color: cat?.color ?? colors.textDim } as const;
   };
 
-  const handleDeleteTransaction = async (t: typeof transactions[0]) => {
+  const handleTapTransaction = (t: DbTransaction) => {
+    router.push(`/transaction/${t.id}`);
+  };
+
+  const handleDeleteTransaction = async (t: DbTransaction) => {
     if (t.installment_group_id) {
       const ok = await confirmDialog(
         'Excluir parcelas',
-        'Deseja excluir só esta parcela ou todas as parcelas restantes deste grupo?',
+        `Excluir todas as parcelas de "${t.title.replace(/ \(\d+\/\d+\)$/, '')}"? Essa ação não pode ser desfeita.`,
       );
       if (!ok) return;
-      // For now: delete all in the group
       deleteInstallmentGroup.mutate(t.installment_group_id);
     } else {
+      const ok = await confirmDialog('Excluir lançamento', `Excluir "${t.title}"?`);
+      if (!ok) return;
       deleteTransaction.mutate(t.id);
     }
   };
@@ -312,8 +319,9 @@ export default function CreditCardsScreen() {
                   return (
                     <Pressable
                       key={t.id}
-                      style={styles.txItem}
-                      onLongPress={async () => handleDeleteTransaction(t)}
+                      style={({ pressed }) => [styles.txItem, pressed && { opacity: 0.75 }]}
+                      onPress={() => handleTapTransaction(t)}
+                      onLongPress={() => handleDeleteTransaction(t)}
                       delayLongPress={350}
                     >
                       <View style={[styles.txIcon, { backgroundColor: `${color}18` }]}>
@@ -329,6 +337,7 @@ export default function CreditCardsScreen() {
                           {new Date(t.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                         </Text>
                       </View>
+                      <Icon name="chevronRight" size={13} color={colors.textInactive} />
                     </Pressable>
                   );
                 })}
@@ -347,8 +356,9 @@ export default function CreditCardsScreen() {
                   return (
                     <Pressable
                       key={t.id}
-                      style={[styles.txItem, { opacity: 0.7 }]}
-                      onLongPress={async () => handleDeleteTransaction(t)}
+                      style={({ pressed }) => [styles.txItem, { opacity: pressed ? 0.6 : 0.72 }]}
+                      onPress={() => handleTapTransaction(t)}
+                      onLongPress={() => handleDeleteTransaction(t)}
                       delayLongPress={350}
                     >
                       <View style={[styles.txIcon, { backgroundColor: `${color}18` }]}>
@@ -364,6 +374,7 @@ export default function CreditCardsScreen() {
                           {new Date(t.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit' })}
                         </Text>
                       </View>
+                      <Icon name="chevronRight" size={13} color={colors.textInactive} />
                     </Pressable>
                   );
                 })}

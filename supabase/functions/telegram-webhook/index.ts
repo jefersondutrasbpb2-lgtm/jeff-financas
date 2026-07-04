@@ -86,15 +86,24 @@ interface Category {
   group_label: string | null;
 }
 
+interface CreditCard {
+  id: string;
+  name: string;
+  last_digits: string | null;
+}
+
 interface Classification {
   type: 'expense' | 'income' | 'investment';
   title: string;
   amount: number;
   category_id: string;
+  card_id: string | null;
+  installments: number;
 }
 
 async function classifyWithGemini(
   categories: Category[],
+  cards: CreditCard[],
   text: string | null,
   audio: { bytes: Uint8Array; mimeType: string } | null
 ): Promise<Classification | null> {
@@ -102,17 +111,26 @@ async function classifyWithGemini(
     .map((c) => `- id="${c.id}" tipo=${c.type} categoria="${c.label}"${c.group_label ? ` grupo="${c.group_label}"` : ''}`)
     .join('\n');
 
+  const cardList = cards.length > 0
+    ? cards.map((c) => `- id="${c.id}" nome="${c.name}"${c.last_digits ? ` final=${c.last_digits}` : ''}`).join('\n')
+    : '(nenhum cartão cadastrado)';
+
   const prompt = `Você é um assistente financeiro. O usuário vai descrever um lançamento financeiro (em texto ou áudio, em português do Brasil).
 Extraia os dados e responda APENAS com um JSON válido, sem markdown, no formato exato:
-{"type":"expense"|"income"|"investment","title":"string curta","amount":number,"category_id":"um dos ids abaixo"}
+{"type":"expense"|"income"|"investment","title":"string curta","amount":number,"category_id":"id","card_id":"id ou null","installments":1}
 
-Categorias disponíveis (escolha o id mais adequado, NUNCA invente um id que não esteja na lista):
+Categorias disponíveis (escolha o id mais adequado, NUNCA invente um id):
 ${categoryList}
 
+Cartões cadastrados (use o id se o usuário mencionar cartão de crédito, senão use null):
+${cardList}
+
 Regras:
-- "amount" é sempre um número positivo em reais (ex: 45.90), nunca negativo, sem o "R$".
-- "title" é uma descrição curta do lançamento (ex: "Uber", "Mercado", "Salário").
-- Se não conseguir identificar uma categoria adequada, escolha a categoria do tipo certo cujo label contenha "Outros".
+- "amount" é sempre o valor TOTAL em reais (número positivo, sem "R$"). Se parcelado, é o total, não a parcela.
+- "title" é uma descrição curta (ex: "Uber", "Mercado", "Salário").
+- "card_id" deve ser o id do cartão se o usuário mencionar cartão de crédito, crédito, ou nome de algum cartão da lista. Caso contrário null.
+- "installments" é o número de parcelas (ex: "3x", "em 3 vezes" → 3). Se não mencionar parcelamento, use 1.
+- Se não conseguir identificar categoria, use a do tipo certo com label contendo "Outros".
 ${text ? `\nMensagem do usuário: "${text}"` : '\nA mensagem do usuário está no áudio anexado.'}`;
 
   const parts: Record<string, unknown>[] = [{ text: prompt }];
@@ -139,6 +157,7 @@ ${text ? `\nMensagem do usuário: "${text}"` : '\nA mensagem do usuário está n
   try {
     const parsed = JSON.parse(rawText) as Classification;
     if (!parsed.category_id || !parsed.amount || !parsed.type) return null;
+    parsed.installments = Math.max(1, Math.round(parsed.installments ?? 1));
     return parsed;
   } catch {
     return null;
@@ -150,7 +169,7 @@ ${text ? `\nMensagem do usuário: "${text}"` : '\nA mensagem do usuário está n
 async function getRecentTransactions(userId: string, limit = 5) {
   const { data } = await supabase
     .from('transactions')
-    .select('id, type, title, amount, date, category_id')
+    .select('id, type, title, amount, date, category_id, card_id, installment_group_id, installment_number, installment_total')
     .eq('user_id', userId)
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -167,13 +186,54 @@ async function deleteTransaction(id: string, userId: string): Promise<boolean> {
   return !error;
 }
 
+async function deleteInstallmentGroup(groupId: string, userId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('installment_group_id', groupId)
+    .eq('user_id', userId)
+    .select('id');
+  if (error) return 0;
+  return data?.length ?? 0;
+}
+
+async function insertInstallments(
+  userId: string,
+  base: { title: string; amount: number; type: string; category_id: string; card_id: string },
+  count: number
+): Promise<string> {
+  const groupId = crypto.randomUUID();
+  const installmentAmount = Math.round((base.amount / count) * 100) / 100;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const rows = Array.from({ length: count }, (_, i) => {
+    const d = new Date(today + 'T12:00:00');
+    d.setMonth(d.getMonth() + i);
+    return {
+      user_id: userId,
+      category_id: base.category_id,
+      type: base.type,
+      title: count > 1 ? `${base.title} (${i + 1}/${count})` : base.title,
+      amount: installmentAmount,
+      date: d.toISOString().slice(0, 10),
+      card_id: base.card_id,
+      installment_group_id: groupId,
+      installment_number: i + 1,
+      installment_total: count,
+    };
+  });
+
+  await supabase.from('transactions').insert(rows);
+  return groupId;
+}
+
 // ── Webhook principal ────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   try {
     const update = await req.json();
 
-    // ── Callback de botão inline (desfazer / excluir) ──────────────────────
+    // ── Callback de botão inline ───────────────────────────────────────────
     if (update.callback_query) {
       const cq = update.callback_query;
       const chatId: number = cq.message.chat.id;
@@ -196,6 +256,11 @@ Deno.serve(async (req) => {
         const ok = await deleteTransaction(txId, link.user_id);
         await answerCallback(cq.id, ok ? '✅ Apagado!' : '❌ Não foi possível apagar.');
         await editMessage(chatId, messageId, ok ? '🗑️ *Lançamento apagado.*' : '❌ Não foi possível apagar esse lançamento.');
+      } else if (data.startsWith('delgroup:')) {
+        const groupId = data.replace('delgroup:', '');
+        const count = await deleteInstallmentGroup(groupId, link.user_id);
+        await answerCallback(cq.id, count > 0 ? `✅ ${count} parcelas apagadas!` : '❌ Erro ao apagar.');
+        await editMessage(chatId, messageId, count > 0 ? `🗑️ *${count} parcelas apagadas.*` : '❌ Não foi possível apagar.');
       } else if (data === 'noop') {
         await answerCallback(cq.id, 'Ok, mantido.');
       }
@@ -239,7 +304,6 @@ Deno.serve(async (req) => {
     }
     const userId = link.user_id;
 
-    // Helper para checar comandos (suporta /cmd@BotUsername)
     const isCmd = (t: string | undefined, cmd: string) =>
       !!t && (t === cmd || t.startsWith(cmd + '@') || t.startsWith(cmd + ' '));
 
@@ -247,7 +311,8 @@ Deno.serve(async (req) => {
     if (isCmd(text, '/ajuda') || isCmd(text, '/help')) {
       await sendMessage(chatId,
         '*Comandos do Jefin Bot* 🤖\n\n' +
-        '📝 *Registrar lançamento*\nMande um texto ou áudio, ex:\n_"Gastei 45 reais no mercado"_\n_"Recebi 3000 de salário"_\n\n' +
+        '📝 *Registrar lançamento*\nMande um texto ou áudio, ex:\n_"Gastei 45 reais no mercado"_\n_"Comprei tênis no cartão Nubank em 3x por 300 reais"_\n\n' +
+        '💳 *Cartão de crédito*\nMencione o cartão e parcelas:\n_"300 reais no Nubank em 6x"_\n_"Comprei no crédito 150 reais"_\n\n' +
         '📋 */lista* — Ver e apagar os 5 últimos lançamentos\n\n' +
         '↩️ */desfazer* — Apagar o último lançamento registrado\n\n' +
         '❓ */ajuda* — Mostrar esta mensagem'
@@ -255,7 +320,7 @@ Deno.serve(async (req) => {
       return new Response('ok');
     }
 
-    // /lista — exibe últimas 5 transações com botão de exclusão em cada
+    // /lista
     if (isCmd(text, '/lista')) {
       const txs = await getRecentTransactions(userId, 5);
       if (txs.length === 0) {
@@ -266,15 +331,22 @@ Deno.serve(async (req) => {
       for (const tx of txs) {
         const emoji = typeEmoji(tx.type);
         const label = typeLabel(tx.type);
-        const msg = `${emoji} *${tx.title}*\n${label} · ${formatBRL(tx.amount)}\n📅 ${tx.date}`;
-        await sendMessage(chatId, msg, {
-          inline_keyboard: [[{ text: '🗑️ Apagar este lançamento', callback_data: `del:${tx.id}` }]],
-        });
+        const installBadge = tx.installment_number && tx.installment_total
+          ? ` · 💳 ${tx.installment_number}/${tx.installment_total}`
+          : tx.card_id ? ' · 💳' : '';
+        const msg = `${emoji} *${tx.title}*\n${label} · ${formatBRL(tx.amount)}${installBadge}\n📅 ${tx.date}`;
+
+        // Se é parcela, botão apaga o grupo inteiro
+        const deleteButton = tx.installment_group_id
+          ? { text: '🗑️ Apagar todas as parcelas', callback_data: `delgroup:${tx.installment_group_id}` }
+          : { text: '🗑️ Apagar este lançamento', callback_data: `del:${tx.id}` };
+
+        await sendMessage(chatId, msg, { inline_keyboard: [[deleteButton]] });
       }
       return new Response('ok');
     }
 
-    // /desfazer — apaga o lançamento mais recente
+    // /desfazer
     if (isCmd(text, '/desfazer')) {
       const txs = await getRecentTransactions(userId, 1);
       if (txs.length === 0) {
@@ -283,25 +355,26 @@ Deno.serve(async (req) => {
       }
       const tx = txs[0];
       const emoji = typeEmoji(tx.type);
+      const installBadge = tx.installment_number && tx.installment_total
+        ? ` (parcela ${tx.installment_number}/${tx.installment_total})`
+        : '';
+
+      const deleteButton = tx.installment_group_id
+        ? { text: '✅ Sim, apagar todas as parcelas', callback_data: `delgroup:${tx.installment_group_id}` }
+        : { text: '✅ Sim, apagar', callback_data: `del:${tx.id}` };
+
       await sendMessage(chatId,
-        `${emoji} *${tx.title}* — ${formatBRL(tx.amount)}\nDeseja apagar esse lançamento?`,
-        {
-          inline_keyboard: [
-            [
-              { text: '✅ Sim, apagar', callback_data: `del:${tx.id}` },
-              { text: '❌ Não', callback_data: 'noop' },
-            ],
-          ],
-        }
+        `${emoji} *${tx.title}*${installBadge} — ${formatBRL(tx.amount)}\nDeseja apagar esse lançamento?`,
+        { inline_keyboard: [[deleteButton, { text: '❌ Não', callback_data: 'noop' }]] }
       );
       return new Response('ok');
     }
 
     // Registro de lançamento (texto ou áudio)
-    const { data: categories } = await supabase
-      .from('categories')
-      .select('id, type, label, group_label')
-      .eq('user_id', userId);
+    const [{ data: categories }, { data: cards }] = await Promise.all([
+      supabase.from('categories').select('id, type, label, group_label').eq('user_id', userId),
+      supabase.from('credit_cards').select('id, name, last_digits').eq('user_id', userId),
+    ]);
 
     if (!categories || categories.length === 0) {
       await sendMessage(chatId, 'Você ainda não tem categorias cadastradas no app.');
@@ -320,7 +393,7 @@ Deno.serve(async (req) => {
       return new Response('ok');
     }
 
-    const classification = await classifyWithGemini(categories, text ?? null, audio);
+    const classification = await classifyWithGemini(categories, cards ?? [], text ?? null, audio);
     if (!classification) {
       await sendMessage(chatId, '😕 Não consegui entender esse lançamento. Tenta descrever de outro jeito?\nEx: _"Gastei 30 reais no mercado"_');
       return new Response('ok');
@@ -332,33 +405,68 @@ Deno.serve(async (req) => {
       return new Response('ok');
     }
 
-    const { data: inserted, error: insertError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        category_id: category.id,
-        type: classification.type,
-        title: classification.title,
-        amount: classification.amount,
-        date: new Date().toISOString().slice(0, 10),
-      })
-      .select('id')
-      .single();
+    const card = classification.card_id ? (cards ?? []).find((c) => c.id === classification.card_id) : null;
+    const isInstallment = !!card && classification.installments > 1;
+    const isCard = !!card;
 
-    if (insertError || !inserted) {
-      await sendMessage(chatId, '❌ Deu um erro ao salvar. Tenta de novo em alguns segundos.');
-      return new Response('ok');
+    let insertedId: string | null = null;
+    let groupId: string | null = null;
+
+    if (isCard) {
+      // Parcelas no cartão (mesmo com installments=1 cria com card_id)
+      groupId = await insertInstallments(
+        userId,
+        {
+          title: classification.title,
+          amount: classification.amount,
+          type: classification.type,
+          category_id: classification.category_id,
+          card_id: card!.id,
+        },
+        classification.installments
+      );
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          category_id: category.id,
+          type: classification.type,
+          title: classification.title,
+          amount: classification.amount,
+          date: new Date().toISOString().slice(0, 10),
+          card_id: null,
+          installment_group_id: null,
+          installment_number: null,
+          installment_total: null,
+        })
+        .select('id')
+        .single();
+
+      if (insertError || !inserted) {
+        await sendMessage(chatId, '❌ Deu um erro ao salvar. Tenta de novo em alguns segundos.');
+        return new Response('ok');
+      }
+      insertedId = inserted.id;
     }
 
     const emoji = typeEmoji(classification.type);
     const label = typeLabel(classification.type);
-    await sendMessage(
-      chatId,
-      `${emoji} *${label} registrada*\n${classification.title} — ${formatBRL(classification.amount)}\nCategoria: ${category.label}`,
-      {
-        inline_keyboard: [[{ text: '↩️ Desfazer', callback_data: `del:${inserted.id}` }]],
+
+    let confirmMsg = `${emoji} *${label} registrada*\n${classification.title} — ${formatBRL(classification.amount)}\nCategoria: ${category.label}`;
+    if (isCard) {
+      const installmentValue = classification.amount / classification.installments;
+      confirmMsg += `\n💳 ${card!.name}`;
+      if (isInstallment) {
+        confirmMsg += ` · ${classification.installments}x de ${formatBRL(installmentValue)}`;
       }
-    );
+    }
+
+    const deleteButton = groupId
+      ? { text: '↩️ Desfazer (todas as parcelas)', callback_data: `delgroup:${groupId}` }
+      : { text: '↩️ Desfazer', callback_data: `del:${insertedId}` };
+
+    await sendMessage(chatId, confirmMsg, { inline_keyboard: [[deleteButton]] });
 
     return new Response('ok');
   } catch (err) {
