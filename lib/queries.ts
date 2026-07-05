@@ -160,7 +160,11 @@ export function useTransactions() {
     queryKey: ['transactions', session?.user.id],
     enabled: !!session,
     queryFn: async () => {
-      const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false });
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return data as DbTransaction[];
     },
