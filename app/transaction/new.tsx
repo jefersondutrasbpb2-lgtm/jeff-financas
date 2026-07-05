@@ -8,6 +8,7 @@ import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
 import { useCategories, useTransactionMutations } from '../../lib/queries';
 import { useCreditCards, formatCardLabel } from '../../lib/creditCards';
+import { DateField } from '../../components/ui/DateField';
 import type { TransactionType } from '../../lib/queries';
 
 const TYPE_OPTIONS: { value: TransactionType; label: string; color: string }[] = [
@@ -32,6 +33,8 @@ export default function NewTransactionScreen() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
+
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 
   // Cartão de crédito
   const [useCard, setUseCard] = useState(false);
@@ -70,7 +73,7 @@ export default function NewTransactionScreen() {
       category_id: activeCategoryId,
       amount: parsedAmount,
       type,
-      date: new Date().toISOString().slice(0, 10),
+      date,
       card_id: null as string | null,
       installment_group_id: null as string | null,
       installment_number: null as number | null,
@@ -131,6 +134,8 @@ export default function NewTransactionScreen() {
           label="Valor (R$)" placeholder="0,00"
           keyboardType="decimal-pad" value={amount} onChangeText={setAmount}
         />
+
+        <DateField label="Data" value={date} onChange={setDate} />
 
         {/* Cartão de crédito — só para despesas */}
         {type === 'expense' && (

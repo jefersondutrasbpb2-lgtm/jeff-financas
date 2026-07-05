@@ -8,6 +8,7 @@ import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
 import { confirmDialog } from '../../lib/confirm';
 import { useCategories, useTransactionMutations, useTransactions } from '../../lib/queries';
+import { DateField } from '../../components/ui/DateField';
 import type { TransactionType } from '../../lib/queries';
 
 const TYPE_OPTIONS: { value: TransactionType; label: string; color: string }[] = [
@@ -29,6 +30,7 @@ export default function EditTransactionScreen() {
   const [categoryId, setCategoryId] = useState<string | null>(original?.category_id ?? null);
   const [title, setTitle] = useState(original?.title ?? '');
   const [amount, setAmount] = useState(original ? String(original.amount).replace('.', ',') : '');
+  const [date, setDate] = useState(original?.date ?? new Date().toISOString().slice(0, 10));
 
   const filteredCategories = useMemo(() => categories.filter((c) => c.type === type), [categories, type]);
   const activeCategoryId = categoryId ?? filteredCategories[0]?.id ?? null;
@@ -64,7 +66,7 @@ export default function EditTransactionScreen() {
   const handleSave = () => {
     if (!canSave || !activeCategoryId) return;
     updateTransaction.mutate(
-      { id: original.id, title: title.trim(), category_id: activeCategoryId, amount: parsedAmount, type },
+      { id: original.id, title: title.trim(), category_id: activeCategoryId, amount: parsedAmount, type, date },
       { onSuccess: () => router.back() }
     );
   };
@@ -109,6 +111,8 @@ export default function EditTransactionScreen() {
 
         <FormField label="Descrição" placeholder="Ex: Supermercado" value={title} onChangeText={setTitle} />
         <FormField label="Valor (R$)" placeholder="0,00" keyboardType="decimal-pad" value={amount} onChangeText={setAmount} />
+
+        <DateField label="Data" value={date} onChange={setDate} />
 
         <Text style={styles.sectionLabel}>Categoria</Text>
         {groupedCategories.map(([groupLabel, items]) => (
