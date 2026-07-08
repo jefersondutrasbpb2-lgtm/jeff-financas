@@ -69,7 +69,16 @@ export function getMonthTransactions(transactions: DbTransaction[], key: string)
 }
 
 export function sumByType(transactions: DbTransaction[], type: TransactionType) {
-  return transactions.filter((t) => t.type === type).reduce((sum, t) => sum + Number(t.amount), 0);
+  return transactions
+    .filter((t) => t.type === type && !t.card_id)
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+}
+
+// Soma despesas de cartão (não afetam o saldo geral)
+export function sumCardExpenses(transactions: DbTransaction[]) {
+  return transactions
+    .filter((t) => t.type === 'expense' && !!t.card_id)
+    .reduce((sum, t) => sum + Number(t.amount), 0);
 }
 
 /**

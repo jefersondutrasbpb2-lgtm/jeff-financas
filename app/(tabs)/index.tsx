@@ -23,6 +23,7 @@ import {
   monthLabel,
   previousMonthKey,
   sumByType,
+  sumCardExpenses,
 } from '../../lib/finance';
 import { useCategories, useHoldings, useOpeningBalances, useTransactions } from '../../lib/queries';
 import { useAuth } from '../../lib/AuthContext';
@@ -60,7 +61,8 @@ export default function HomeScreen() {
 
   const monthTx = useMemo(() => getMonthTransactions(transactions, selectedKey), [transactions, selectedKey]);
   const income = sumByType(monthTx, 'income');
-  const expense = sumByType(monthTx, 'expense');
+  const expense = sumByType(monthTx, 'expense'); // apenas despesas sem cartão (afetam saldo)
+  const cardExpense = useMemo(() => sumCardExpenses(monthTx), [monthTx]); // despesas de cartão (não afetam saldo)
   const cashBalance = useMemo(
     () => getClosingBalance(transactions, openingBalances, selectedKey),
     [transactions, openingBalances, selectedKey]
@@ -84,7 +86,8 @@ export default function HomeScreen() {
   );
 
   const spendingByCategory = useMemo(() => {
-    const expenseTx = monthTx.filter((t) => t.type === 'expense' && !businessCategoryIds.has(t.category_id ?? ''));
+    // Inclui TODAS as despesas (todas as categorias, incluindo cartão)
+    const expenseTx = monthTx.filter((t) => t.type === 'expense');
     const totalExpense = expenseTx.reduce((sum, t) => sum + Number(t.amount), 0);
     const byCategory = new Map<string, number>();
     for (const t of expenseTx) {
@@ -97,7 +100,7 @@ export default function HomeScreen() {
         return { label: cat.label, color: cat.color, amount, pct: totalExpense > 0 ? (amount / totalExpense) * 100 : 0 };
       })
       .sort((a, b) => b.pct - a.pct);
-  }, [monthTx, categories, businessCategoryIds]);
+  }, [monthTx, categories]);
 
   const recentTransactions = useMemo(
     () => [...monthTx].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5),
@@ -221,8 +224,13 @@ export default function HomeScreen() {
                   <Icon name="arrowUp" size={12} color={colors.red} />
                 </View>
               </View>
-              <Text style={styles.summaryCardValue}>{formatBRL(expense, !showBalance)}</Text>
-              {prevExpense > 0 && (
+              <Text style={styles.summaryCardValue}>{formatBRL(expense + cardExpense, !showBalance)}</Text>
+              {cardExpense > 0 && (
+                <Text style={[styles.summaryCardChange, { color: colors.textDim }]}>
+                  💳 {formatBRL(cardExpense, !showBalance)} no cartão
+                </Text>
+              )}
+              {prevExpense > 0 && !cardExpense && (
                 <Text style={[styles.summaryCardChange, { color: expensePctChange <= 0 ? colors.teal : colors.red }]}>
                   {expensePctChange >= 0 ? '▲' : '▼'} {formatPct(Math.abs(expensePctChange))} vs mês ant.
                 </Text>
@@ -287,7 +295,7 @@ export default function HomeScreen() {
                       innerRadiusRatio={32 / 55}
                     />
                     <View style={styles.donutCenter}>
-                      <Text style={styles.donutCenterValue}>{formatBRL(expense, !showBalance)}</Text>
+                      <Text style={styles.donutCenterValue}>{formatBRL(expense + cardExpense, !showBalance)}</Text>
                       <Text style={styles.donutCenterLabel}>Total</Text>
                     </View>
                   </View>
