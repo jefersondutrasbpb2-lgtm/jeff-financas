@@ -54,6 +54,7 @@ export default function HomeScreen() {
 
   const todayKey = monthKey(new Date());
   const [selectedKey, setSelectedKey] = React.useState(todayKey);
+  const [selectedCatIndex, setSelectedCatIndex] = React.useState<number | null>(null);
   const isCurrentMonth = selectedKey === todayKey;
 
   const goToPrev = () => setSelectedKey((k) => previousMonthKey(k));
@@ -291,27 +292,51 @@ export default function HomeScreen() {
                   <View style={styles.donutWrap}>
                     <DonutChart
                       segments={spendingByCategory.map((c) => ({ pct: c.pct, color: c.color }))}
-                      size={110}
-                      innerRadiusRatio={32 / 55}
+                      size={120}
+                      innerRadiusRatio={32 / 60}
+                      selectedIndex={selectedCatIndex}
+                      onSegmentPress={(i) => setSelectedCatIndex(i === selectedCatIndex ? null : i)}
                     />
                     <View style={styles.donutCenter}>
-                      <Text style={styles.donutCenterValue}>{formatBRL(expense + cardExpense, !showBalance)}</Text>
-                      <Text style={styles.donutCenterLabel}>Total</Text>
+                      {selectedCatIndex !== null && spendingByCategory[selectedCatIndex] ? (
+                        <>
+                          <Text style={[styles.donutCenterValue, { color: spendingByCategory[selectedCatIndex].color }]}>
+                            {spendingByCategory[selectedCatIndex].pct.toFixed(0)}%
+                          </Text>
+                          <Text style={styles.donutCenterLabel} numberOfLines={2}>
+                            {spendingByCategory[selectedCatIndex].label}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text style={styles.donutCenterValue}>{formatBRL(expense + cardExpense, !showBalance)}</Text>
+                          <Text style={styles.donutCenterLabel}>Total</Text>
+                        </>
+                      )}
                     </View>
                   </View>
                   <View style={styles.legend}>
-                    {spendingByCategory.slice(0, 5).map((c) => (
-                      <View key={c.label} style={styles.legendRow}>
-                        <View style={styles.legendLeft}>
-                          <View style={[styles.legendDot, { backgroundColor: c.color }]} />
-                          <Text style={styles.legendLabel}>{c.label}</Text>
-                        </View>
-                        <View style={styles.legendRight}>
-                          <Text style={styles.legendPct}>{c.pct.toFixed(0)}%</Text>
-                          <Text style={styles.legendValue}>{formatBRL(c.amount)}</Text>
-                        </View>
-                      </View>
-                    ))}
+                    {spendingByCategory.map((c, i) => {
+                      const isSelected = selectedCatIndex === i;
+                      return (
+                        <Pressable
+                          key={c.label + i}
+                          onPress={() => setSelectedCatIndex(i === selectedCatIndex ? null : i)}
+                          style={[styles.legendRow, isSelected && { backgroundColor: `${c.color}14`, borderRadius: 8, marginHorizontal: -4, paddingHorizontal: 4 }]}
+                        >
+                          <View style={styles.legendLeft}>
+                            <View style={[styles.legendDot, { backgroundColor: c.color }, isSelected && { width: 9, height: 9 }]} />
+                            <Text style={[styles.legendLabel, isSelected && { color: colors.textPrimary, fontFamily: 'PlusJakartaSans_700Bold' }]} numberOfLines={1}>
+                              {c.label}
+                            </Text>
+                          </View>
+                          <View style={styles.legendRight}>
+                            <Text style={[styles.legendPct, isSelected && { color: c.color }]}>{c.pct.toFixed(0)}%</Text>
+                            <Text style={styles.legendValue}>{formatBRL(c.amount, !showBalance)}</Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 </View>
               ) : (
