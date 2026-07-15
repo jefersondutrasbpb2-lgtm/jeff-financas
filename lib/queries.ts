@@ -26,6 +26,7 @@ export interface DbTransaction {
   title: string;
   amount: number;
   date: string;
+  created_at: string;
   // Cartão de crédito
   card_id: string | null;
   installment_group_id: string | null;

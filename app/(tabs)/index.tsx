@@ -104,7 +104,10 @@ export default function HomeScreen() {
   }, [monthTx, categories]);
 
   const recentTransactions = useMemo(
-    () => [...monthTx].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5),
+    () => [...monthTx].sort((a, b) => {
+      if (b.date !== a.date) return a.date < b.date ? 1 : -1;
+      return b.created_at < a.created_at ? 1 : -1;
+    }).slice(0, 5),
     [monthTx]
   );
 
