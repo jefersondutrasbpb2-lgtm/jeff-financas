@@ -175,10 +175,7 @@ export default function CreditCardsScreen() {
     if (!activeCard) return [];
     return transactions
       .filter((t) => t.card_id === activeCard.id)
-      .sort((a, b) => {
-        if (b.date !== a.date) return a.date < b.date ? 1 : -1;
-        return b.created_at < a.created_at ? 1 : -1;
-      });
+;
   }, [transactions, activeCard]);
 
   // Fatura atual (transações dentro do ciclo de fechamento)
