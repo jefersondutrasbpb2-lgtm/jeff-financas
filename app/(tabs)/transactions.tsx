@@ -91,7 +91,10 @@ export default function TransactionsScreen() {
   }, [monthTx, filterType, searchQuery]);
 
   const groups = useMemo(() => {
-    const sorted = [...filteredTx].sort((a, b) => (a.date < b.date ? 1 : -1));
+    const sorted = [...filteredTx].sort((a, b) => {
+      if (b.date !== a.date) return a.date < b.date ? 1 : -1;
+      return b.created_at < a.created_at ? 1 : -1;
+    });
     const map = new Map<string, typeof sorted>();
     for (const t of sorted) {
       const key = dayGroupLabel(t.date);
