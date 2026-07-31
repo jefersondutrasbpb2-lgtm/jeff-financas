@@ -6,7 +6,7 @@ import { Icon } from '../../components/icons/Icon';
 import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
 import { useSavingsPotMutations, useTransactionMutations } from '../../lib/queries';
-import { formatBRL } from '../../lib/formatters';
+import { formatBRL, parseAmountInput } from '../../lib/formatters';
 
 export default function WithdrawSavingsScreen() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function WithdrawSavingsScreen() {
   const { addTransaction } = useTransactionMutations();
 
   const [value, setValue] = useState('');
-  const parsedValue = Number(value.replace(/\./g, '').replace(',', '.'));
+  const parsedValue = parseAmountInput(value);
   const remaining = currentAmount - parsedValue;
   const canSave = parsedValue > 0 && parsedValue <= currentAmount;
 

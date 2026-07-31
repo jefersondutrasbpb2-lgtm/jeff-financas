@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../../components/icons/Icon';
 import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
+import { parseAmountInput } from '../../lib/formatters';
 import { useSavingsPotMutations } from '../../lib/queries';
 
 export default function NewSavingsPotScreen() {
@@ -17,7 +18,7 @@ export default function NewSavingsPotScreen() {
   const [name, setName] = useState(params.name ?? '');
   const [amount, setAmount] = useState(params.amount ?? '');
 
-  const parsedAmount = Number(amount.replace(/\./g, '').replace(',', '.'));
+  const parsedAmount = parseAmountInput(amount);
   const canSave = name.trim().length > 0 && parsedAmount >= 0;
 
   const handleSave = () => {

@@ -7,6 +7,7 @@ import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
 import { confirmDialog } from '../../lib/confirm';
 import { CATEGORY_COLOR_CHOICES, CATEGORY_ICON_CHOICES, TRANSACTION_TYPE_LABELS } from '../../lib/finance';
+import { parseAmountInput } from '../../lib/formatters';
 import { useCategories, useCategoryMutations, type DbCategory, type TransactionType } from '../../lib/queries';
 
 const TYPES: TransactionType[] = ['expense', 'income', 'investment'];
@@ -98,7 +99,7 @@ export default function ManageCategoriesScreen() {
   };
 
   const handleSave = () => {
-    const parsedLimit = Number(limit.replace(/\./g, '').replace(',', '.')) || 0;
+    const parsedLimit = parseAmountInput(limit) || 0;
 
     if (mode === 'new-group') {
       if (!newGroupName.trim() || !label.trim()) return;

@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FormField } from '../components/ui/FormField';
 import { colors } from '../constants/theme';
-import { formatBRL } from '../lib/formatters';
+import { formatBRL, parseAmountInput } from '../lib/formatters';
 import { getClosingBalance, getOpeningBalance, monthKey, monthLabel, previousMonthKey } from '../lib/finance';
 import { useOpeningBalances, useSetOpeningBalance, useTransactions } from '../lib/queries';
 
@@ -33,7 +33,7 @@ export default function BalanceSettingsScreen() {
 
   const [value, setValue] = useState(computedOpening.toFixed(2).replace('.', ','));
 
-  const parsedValue = Number(value.replace(/\./g, '').replace(',', '.'));
+  const parsedValue = parseAmountInput(value);
   const canSave = !Number.isNaN(parsedValue);
 
   const handleSave = () => {

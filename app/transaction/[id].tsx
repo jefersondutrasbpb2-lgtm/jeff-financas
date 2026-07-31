@@ -7,6 +7,7 @@ import { CategoryChip } from '../../components/ui/CategoryChip';
 import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
 import { confirmDialog } from '../../lib/confirm';
+import { parseAmountInput } from '../../lib/formatters';
 import { useCategories, useTransactionMutations, useTransactions } from '../../lib/queries';
 import { DateField } from '../../components/ui/DateField';
 import type { TransactionType } from '../../lib/queries';
@@ -60,7 +61,7 @@ export default function EditTransactionScreen() {
     );
   }
 
-  const parsedAmount = Number(amount.replace(/\./g, '').replace(',', '.'));
+  const parsedAmount = parseAmountInput(amount);
   const canSave = title.trim().length > 0 && parsedAmount > 0 && !!activeCategoryId;
 
   const handleSave = () => {

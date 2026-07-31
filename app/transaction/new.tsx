@@ -8,6 +8,7 @@ import { FormField } from '../../components/ui/FormField';
 import { colors } from '../../constants/theme';
 import { useCategories, useTransactionMutations } from '../../lib/queries';
 import { useCreditCards, formatCardLabel } from '../../lib/creditCards';
+import { parseAmountInput } from '../../lib/formatters';
 import { DateField } from '../../components/ui/DateField';
 import type { TransactionType } from '../../lib/queries';
 
@@ -59,7 +60,7 @@ export default function NewTransactionScreen() {
     return Array.from(map.entries());
   }, [filteredCategories]);
 
-  const parsedAmount = Number(amount.replace(/\./g, '').replace(',', '.'));
+  const parsedAmount = parseAmountInput(amount);
   const activeCard = useCard ? (selectedCardId ?? cards[0]?.id ?? null) : null;
   const canSave = title.trim().length > 0 && parsedAmount > 0 && !!activeCategoryId
     && (!useCard || !!activeCard);
