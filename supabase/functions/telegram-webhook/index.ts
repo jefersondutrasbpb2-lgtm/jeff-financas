@@ -99,6 +99,11 @@ interface Classification {
   category_id: string;
   card_id: string | null;
   installments: number;
+  date: string;
+}
+
+function todayInSaoPaulo(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 }
 
 async function classifyWithGemini(
@@ -115,9 +120,14 @@ async function classifyWithGemini(
     ? cards.map((c) => `- id="${c.id}" nome="${c.name}"${c.last_digits ? ` final=${c.last_digits}` : ''}`).join('\n')
     : '(nenhum cartão cadastrado)';
 
+  const today = todayInSaoPaulo();
+  const weekday = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long' }).format(new Date());
+
   const prompt = `Você é um assistente financeiro. O usuário vai descrever um lançamento financeiro (em texto ou áudio, em português do Brasil).
 Extraia os dados e responda APENAS com um JSON válido, sem markdown, no formato exato:
-{"type":"expense"|"income"|"investment","title":"string curta","amount":number,"category_id":"id","card_id":"id ou null","installments":1}
+{"type":"expense"|"income"|"investment","title":"string curta","amount":number,"category_id":"id","card_id":"id ou null","installments":1,"date":"YYYY-MM-DD"}
+
+Hoje é ${today} (${weekday}).
 
 Categorias disponíveis (escolha o id mais adequado, NUNCA invente um id):
 ${categoryList}
@@ -130,6 +140,7 @@ Regras:
 - "title" é uma descrição curta (ex: "Uber", "Mercado", "Salário").
 - "card_id" deve ser o id do cartão se o usuário mencionar cartão de crédito, crédito, ou nome de algum cartão da lista. Caso contrário null.
 - "installments" é o número de parcelas (ex: "3x", "em 3 vezes" → 3). Se não mencionar parcelamento, use 1.
+- "date" é a data REAL do lançamento, calculada a partir de hoje (${today}) e de qualquer referência temporal na mensagem: "ontem", "anteontem", "hoje", "amanhã", "sexta-feira passada", "dia 15", "15/03", "daqui a 3 dias", "semana que vem", "mês passado", etc. Isso vale tanto para datas passadas quanto FUTURAS — se o usuário disser uma data futura, use exatamente essa data futura, mesmo que ainda não tenha acontecido. Se nenhuma referência temporal for mencionada, use hoje (${today}). Sempre no formato YYYY-MM-DD.
 - Se não conseguir identificar categoria, use a do tipo certo com label contendo "Outros".
 ${text ? `\nMensagem do usuário: "${text}"` : '\nA mensagem do usuário está no áudio anexado.'}`;
 
@@ -158,6 +169,7 @@ ${text ? `\nMensagem do usuário: "${text}"` : '\nA mensagem do usuário está n
     const parsed = JSON.parse(rawText) as Classification;
     if (!parsed.category_id || !parsed.amount || !parsed.type) return null;
     parsed.installments = Math.max(1, Math.round(parsed.installments ?? 1));
+    parsed.date = /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) ? parsed.date : todayInSaoPaulo();
     return parsed;
   } catch {
     return null;
@@ -199,15 +211,14 @@ async function deleteInstallmentGroup(groupId: string, userId: string): Promise<
 
 async function insertInstallments(
   userId: string,
-  base: { title: string; amount: number; type: string; category_id: string; card_id: string },
+  base: { title: string; amount: number; type: string; category_id: string; card_id: string; date: string },
   count: number
 ): Promise<string> {
   const groupId = crypto.randomUUID();
   const installmentAmount = Math.round((base.amount / count) * 100) / 100;
-  const today = new Date().toISOString().slice(0, 10);
 
   const rows = Array.from({ length: count }, (_, i) => {
-    const d = new Date(today + 'T12:00:00');
+    const d = new Date(base.date + 'T12:00:00');
     d.setMonth(d.getMonth() + i);
     return {
       user_id: userId,
@@ -429,6 +440,7 @@ Deno.serve(async (req) => {
           type: classification.type,
           category_id: classification.category_id,
           card_id: card!.id,
+          date: classification.date,
         },
         classification.installments
       );
@@ -441,7 +453,7 @@ Deno.serve(async (req) => {
           type: classification.type,
           title: classification.title,
           amount: classification.amount,
-          date: new Date().toISOString().slice(0, 10),
+          date: classification.date,
           card_id: null,
           installment_group_id: null,
           installment_number: null,
@@ -460,7 +472,10 @@ Deno.serve(async (req) => {
     const emoji = typeEmoji(classification.type);
     const label = typeLabel(classification.type);
 
-    let confirmMsg = `${emoji} *${label} registrada*\n${classification.title} — ${formatBRL(classification.amount)}\nCategoria: ${category.label}`;
+    const [y, m, d] = classification.date.split('-');
+    const dateLabel = classification.date === todayInSaoPaulo() ? 'Hoje' : `${d}/${m}/${y}`;
+
+    let confirmMsg = `${emoji} *${label} registrada*\n${classification.title} — ${formatBRL(classification.amount)}\nCategoria: ${category.label}\n📅 ${dateLabel}`;
     if (isCard) {
       const installmentValue = classification.amount / classification.installments;
       confirmMsg += `\n💳 ${card!.name}`;
