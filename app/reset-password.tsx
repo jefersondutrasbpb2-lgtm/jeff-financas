@@ -72,10 +72,12 @@ export default function ResetPasswordScreen() {
 
         <Pressable
           onPress={handleSave}
-          disabled={loading || !password || !confirm}
-          style={[styles.btnPrimary, (loading || !password || !confirm) && { opacity: 0.5 }]}
+          disabled={!ready || loading || !password || !confirm}
+          style={[styles.btnPrimary, (!ready || loading || !password || !confirm) && { opacity: 0.5 }]}
         >
-          <Text style={styles.btnPrimaryText}>{loading ? 'Salvando…' : 'Salvar nova senha'}</Text>
+          <Text style={styles.btnPrimaryText}>
+            {!ready ? 'Verificando link…' : loading ? 'Salvando…' : 'Salvar nova senha'}
+          </Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
