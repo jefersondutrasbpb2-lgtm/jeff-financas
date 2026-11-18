@@ -245,7 +245,19 @@ export function useTransactionMutations() {
     onSuccess: invalidate,
   });
 
-  return { addTransaction, updateTransaction, deleteTransaction, deleteInstallmentGroup, addInstallments };
+  // Importação em lote (extrato bancário)
+  const addTransactionsBulk = useMutation({
+    mutationFn: async (
+      rows: { type: TransactionType; title: string; amount: number; date: string; category_id: string | null }[]
+    ) => {
+      const payload = rows.map((r) => ({ ...r, card_id: null, user_id: session!.user.id }));
+      const { error } = await supabase.from('transactions').insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+
+  return { addTransaction, updateTransaction, deleteTransaction, deleteInstallmentGroup, addInstallments, addTransactionsBulk };
 }
 
 // ---- Opening balances ----
