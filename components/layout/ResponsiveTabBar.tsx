@@ -22,6 +22,7 @@ const TAB_ICONS: Record<string, IconName> = {
   index: 'home',
   transactions: 'receipt',
   budget: 'tag',
+  planning: 'clockCircle',
   investments: 'chartPulse',
   'credit-cards': 'wallet',
 };
@@ -30,6 +31,7 @@ const TAB_LABELS: Record<string, string> = {
   index: 'Início',
   transactions: 'Transações',
   budget: 'Orçamento',
+  planning: 'Planejamento',
   investments: 'Portfólio',
   'credit-cards': 'Cartão',
 };

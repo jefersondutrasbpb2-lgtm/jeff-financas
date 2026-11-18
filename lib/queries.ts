@@ -277,6 +277,39 @@ export function useSetOpeningBalance() {
   });
 }
 
+// ---- Planned income (planejamento mensal) ----
+
+// Tabela opcional (supabase/add_monthly_plans.sql): se ainda não existir, o
+// planejamento cai para a renda recebida / média dos últimos meses.
+export function usePlannedIncomes() {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ['monthly_plans', session?.user.id],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('monthly_plans').select('month_key, expected_income');
+      if (error) return {} as Record<string, number>;
+      return Object.fromEntries(
+        (data ?? []).map((row) => [row.month_key, Number(row.expected_income)])
+      ) as Record<string, number>;
+    },
+  });
+}
+
+export function useSetPlannedIncome() {
+  const { session } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ monthKey, amount }: { monthKey: string; amount: number }) => {
+      const { error } = await supabase
+        .from('monthly_plans')
+        .upsert({ user_id: session!.user.id, month_key: monthKey, expected_income: amount });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['monthly_plans', session?.user.id] }),
+  });
+}
+
 // ---- Telegram link ----
 
 export function useTelegramLinkCode() {

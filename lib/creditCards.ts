@@ -95,8 +95,8 @@ export function getBillingCycle(card: DbCreditCard, referenceDate = new Date()) 
   const prevCloseYear = closeMonth === 0 ? closeYear - 1 : closeYear;
   const openDate = new Date(prevCloseYear, prevCloseMonth, card.closing_day + 1);
 
-  // Vencimento é due_day do mês seguinte ao fechamento
-  let dueMonth = closeMonth + 1;
+  // Vence no mesmo mês do fechamento se due_day > closing_day; senão, no mês seguinte
+  let dueMonth = closeMonth + (card.due_day > card.closing_day ? 0 : 1);
   let dueYear = closeYear;
   if (dueMonth > 11) { dueMonth = 0; dueYear++; }
   const dueDate = new Date(dueYear, dueMonth, card.due_day);
