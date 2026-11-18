@@ -67,6 +67,7 @@ export default function RootLayout() {
               <Stack.Screen name="settings/profile" options={{ presentation: 'modal' }} />
               <Stack.Screen name="savings/new" options={{ presentation: 'modal' }} />
               <Stack.Screen name="savings/withdraw" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="import-statement" options={{ presentation: 'modal' }} />
               <Stack.Screen name="reset-password" />
               <Stack.Screen name="admin/index" options={{ presentation: 'modal' }} />
             </Stack>

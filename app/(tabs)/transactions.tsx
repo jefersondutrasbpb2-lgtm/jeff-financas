@@ -113,6 +113,9 @@ export default function TransactionsScreen() {
         <View style={styles.headerRow}>
           <Text style={styles.title}>Transações</Text>
           <View style={styles.headerActions}>
+            <Pressable style={styles.headerIconButton} onPress={() => router.push('/import-statement')}>
+              <Icon name="upload" size={17} color={colors.textSecondary} />
+            </Pressable>
             <Pressable
               style={[styles.headerIconButton, searchOpen && styles.headerIconButtonActive]}
               onPress={toggleSearch}
