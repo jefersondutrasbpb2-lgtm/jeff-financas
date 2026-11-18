@@ -12,6 +12,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="transactions" />
       <Tabs.Screen name="budget" />
+      <Tabs.Screen name="planning" />
       <Tabs.Screen name="investments" />
       <Tabs.Screen name="credit-cards" />
     </Tabs>
