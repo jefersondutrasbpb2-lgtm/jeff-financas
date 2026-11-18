@@ -38,7 +38,8 @@ export interface CardBill {
   closeDate: string;
   dueDate: string;
   total: number;
-  /** Ainda vai sair da conta (vencimento hoje ou depois). */
+  paid: boolean;
+  /** Ainda vai sair da conta: não paga e vencimento hoje ou depois. */
   pending: boolean;
 }
 
@@ -51,7 +52,8 @@ export function getBillDueInMonth(
   card: DbCreditCard,
   dueKey: string,
   transactions: DbTransaction[],
-  today: string
+  today: string,
+  paidKeys: Set<string> = new Set()
 ): CardBill {
   const closeKey = card.due_day > card.closing_day ? dueKey : addMonths(dueKey, -1);
   const closeDate = dayOf(closeKey, card.closing_day);
@@ -60,7 +62,8 @@ export function getBillDueInMonth(
   const total = transactions
     .filter((t) => t.type === 'expense' && t.card_id === card.id && t.date >= openDate && t.date <= closeDate)
     .reduce((sum, t) => sum + Number(t.amount), 0);
-  return { card, openDate, closeDate, dueDate, total, pending: dueDate >= today };
+  const paid = paidKeys.has(`${card.id}|${dueDate}`);
+  return { card, openDate, closeDate, dueDate, total, paid, pending: !paid && dueDate >= today };
 }
 
 // ---- Planejamento do mês ----
@@ -72,6 +75,8 @@ export interface PlanInput {
   openingBalances: Record<string, number>;
   /** Renda prevista por mês (opcional), 'YYYY-MM' -> valor. */
   plannedIncomes: Record<string, number>;
+  /** Faturas já pagas, no formato 'cardId|YYYY-MM-DD' (data de vencimento). */
+  paidBills?: Set<string>;
   now?: Date;
 }
 
@@ -118,7 +123,7 @@ function computeMonth(input: PlanInput, key: string, startBalance: number): Mont
   const expectedIncome = Math.max(hasPlan ? planned : fallback, receivedIncome);
   const toReceive = isPast ? 0 : expectedIncome - receivedIncome;
 
-  const bills = input.cards.map((c) => getBillDueInMonth(c, key, input.transactions, today));
+  const bills = input.cards.map((c) => getBillDueInMonth(c, key, input.transactions, today, input.paidBills));
   const billsPending = isPast ? 0 : bills.filter((b) => b.pending).reduce((s, b) => s + b.total, 0);
 
   const remaining = (type: 'expense' | 'investment', business: boolean) =>

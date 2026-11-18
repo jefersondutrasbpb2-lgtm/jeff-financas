@@ -5,6 +5,8 @@ import { Icon } from '../../components/icons/Icon';
 import { MonthSelector } from '../../components/ui/MonthSelector';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/theme';
+import { billKey, useBillPayments, usePayBill } from '../../lib/billPayments';
+import { confirmDialog } from '../../lib/confirm';
 import { useCreditCards } from '../../lib/creditCards';
 import { formatBRL, parseAmountInput } from '../../lib/formatters';
 import { monthKey, monthLabel, previousMonthKey } from '../../lib/finance';
@@ -47,6 +49,12 @@ export default function PlanningScreen() {
   const { data: openingBalances = {} } = useOpeningBalances();
   const { data: plannedIncomes = {} } = usePlannedIncomes();
   const setPlannedIncome = useSetPlannedIncome();
+  const { data: billPayments = [] } = useBillPayments();
+  const payBill = usePayBill();
+  const paidBills = useMemo(
+    () => new Set(billPayments.map((p) => billKey(p.card_id, p.due_date))),
+    [billPayments]
+  );
 
   const currentKey = monthKey(new Date());
   const [viewedKey, setViewedKey] = useState(currentKey);
@@ -55,8 +63,8 @@ export default function PlanningScreen() {
   const [purchaseInput, setPurchaseInput] = useState('');
 
   const plan = useMemo(
-    () => buildMonthPlan({ transactions, categories, cards, openingBalances, plannedIncomes }, viewedKey),
-    [transactions, categories, cards, openingBalances, plannedIncomes, viewedKey]
+    () => buildMonthPlan({ transactions, categories, cards, openingBalances, plannedIncomes, paidBills }, viewedKey),
+    [transactions, categories, cards, openingBalances, plannedIncomes, paidBills, viewedKey]
   );
 
   const purchase = parseAmountInput(purchaseInput);
@@ -64,6 +72,25 @@ export default function PlanningScreen() {
   const freeAfter = plan.free - (hasPurchase ? purchase : 0);
 
   const heroColor = plan.free < 0 ? colors.red : plan.free < plan.expectedIncome * 0.1 ? colors.amber : colors.teal;
+
+  const handlePayBill = async (b: (typeof plan.bills)[number]) => {
+    const ok = await confirmDialog(
+      'Pagar fatura',
+      `Registrar o pagamento de ${formatBRL(b.total)} da fatura ${b.card.name} (vence ${formatShortDate(b.dueDate)})? O valor sai do seu saldo hoje.`,
+      'Pagar'
+    );
+    if (!ok) return;
+    payBill.mutate(
+      { cardId: b.card.id, cardName: b.card.name, dueDate: b.dueDate, amount: b.total },
+      {
+        onError: () =>
+          Alert.alert(
+            'Não foi possível registrar',
+            'Rode o arquivo supabase/add_bill_payments.sql no Supabase para habilitar o pagamento de faturas.'
+          ),
+      }
+    );
+  };
 
   const startEditIncome = () => {
     setIncomeInput(plan.expectedIncome > 0 ? String(plan.expectedIncome).replace('.', ',') : '');
@@ -197,18 +224,30 @@ export default function PlanningScreen() {
                 <Text style={styles.emptyText}>Nenhum cartão cadastrado.</Text>
               ) : (
                 plan.bills.map((b) => (
-                  <View key={b.card.id} style={styles.billRow}>
-                    <View style={[styles.billDot, { backgroundColor: b.card.color }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rowLabel}>{b.card.name}</Text>
-                      <Text style={styles.rowHint}>
-                        fecha {formatShortDate(b.closeDate)} · vence {formatShortDate(b.dueDate)}
-                        {b.pending ? '' : ' · já venceu'}
+                  <View key={b.card.id} style={styles.billBlock}>
+                    <View style={styles.billRow}>
+                      <View style={[styles.billDot, { backgroundColor: b.card.color }]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.rowLabel}>{b.card.name}</Text>
+                        <Text style={styles.rowHint}>
+                          fecha {formatShortDate(b.closeDate)} · vence {formatShortDate(b.dueDate)}
+                          {b.paid ? ' · paga ✓' : b.pending ? '' : ' · já venceu'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.rowValue, !b.pending && { color: colors.textDim }]}>
+                        {formatBRL(b.total)}
                       </Text>
                     </View>
-                    <Text style={[styles.rowValue, !b.pending && { color: colors.textDim }]}>
-                      {formatBRL(b.total)}
-                    </Text>
+                    {!b.paid && b.total > 0 && (
+                      <Pressable
+                        onPress={() => handlePayBill(b)}
+                        disabled={payBill.isPending}
+                        style={[styles.payBtn, payBill.isPending && { opacity: 0.5 }]}
+                      >
+                        <Icon name="check" size={13} color={colors.teal} />
+                        <Text style={styles.payBtnText}>Pagar fatura</Text>
+                      </Pressable>
+                    )}
                   </View>
                 ))
               )}
@@ -236,7 +275,7 @@ export default function PlanningScreen() {
 
           <Text style={styles.footnote}>
             Sobra = saldo + ainda a receber − faturas a vencer − gastos e reservas que faltam. Trabalho e negócios ficam
-            de fora, como no Orçamento. Se você registrar o pagamento da fatura como despesa, ele será contado em dobro.
+            de fora, como no Orçamento. Use o botão "Pagar fatura" para dar baixa: ele lança a saída no saldo e tira a fatura do que está pendente.
           </Text>
         </ScrollView>
       </SafeAreaView>
@@ -286,6 +325,13 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: colors.textPrimary },
   rowHint: { fontSize: 11, fontFamily: 'PlusJakartaSans_400Regular', color: colors.textDim, marginTop: 2, lineHeight: 15 },
   rowValue: { fontSize: 13.5, fontFamily: 'PlusJakartaSans_700Bold', color: colors.textPrimary },
+  billBlock: { gap: 8 },
+  payBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderWidth: 1, borderColor: colors.teal, borderRadius: 10, paddingVertical: 9,
+    backgroundColor: colors.tealDim,
+  },
+  payBtnText: { fontSize: 12.5, fontFamily: 'PlusJakartaSans_700Bold', color: colors.teal },
   billRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   billDot: { width: 10, height: 10, borderRadius: 5 },
   emptyText: { fontSize: 12.5, fontFamily: 'PlusJakartaSans_400Regular', color: colors.textDim },

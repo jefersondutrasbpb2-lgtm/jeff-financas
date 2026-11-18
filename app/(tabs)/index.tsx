@@ -27,6 +27,7 @@ import {
 } from '../../lib/finance';
 import { useCategories, useHoldings, useOpeningBalances, useTransactions } from '../../lib/queries';
 import { useAuth } from '../../lib/AuthContext';
+import { useBillPayments } from '../../lib/billPayments';
 import { useUiStore } from '../../store/useFinanceStore';
 import { useAppConfig, DEFAULTS } from '../../lib/useAppConfig';
 
@@ -45,6 +46,7 @@ export default function HomeScreen() {
   const { data: categories = [] } = useCategories();
   const { data: openingBalances = {} } = useOpeningBalances();
   const { data: holdings = [] } = useHoldings();
+  const { data: billPayments = [] } = useBillPayments();
 
   const { width: screenW } = useWindowDimensions();
   const isDesktop = screenW >= 860;
@@ -88,7 +90,9 @@ export default function HomeScreen() {
 
   const spendingByCategory = useMemo(() => {
     // Inclui TODAS as despesas (todas as categorias, incluindo cartão)
-    const expenseTx = monthTx.filter((t) => t.type === 'expense');
+    // Pagamento de fatura sai do saldo, mas as compras do cartão já estão contadas
+    const paymentTxIds = new Set(billPayments.map((p) => p.transaction_id));
+    const expenseTx = monthTx.filter((t) => t.type === 'expense' && !paymentTxIds.has(t.id));
     const totalExpense = expenseTx.reduce((sum, t) => sum + Number(t.amount), 0);
     const byCategory = new Map<string, number>();
     for (const t of expenseTx) {
@@ -101,7 +105,7 @@ export default function HomeScreen() {
         return { label: cat.label, color: cat.color, amount, pct: totalExpense > 0 ? (amount / totalExpense) * 100 : 0 };
       })
       .sort((a, b) => b.pct - a.pct);
-  }, [monthTx, categories]);
+  }, [monthTx, categories, billPayments]);
 
   const recentTransactions = useMemo(
     () => monthTx.slice(0, 5),
